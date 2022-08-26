@@ -34,3 +34,10 @@ D:\_Rimworld\CookCarefully\Source\obj\Debug\CookCarefully.dll
 D:\_Rimworld\CookCarefully\Source\obj\Debug\CookCarefully.pdb
 D:\_Rimworld\CookCarefully\Assemblies_Temp\CookCarefully.dll
 D:\_Rimworld\CookCarefully\Assemblies_Temp\CookCarefully.pdb
+D:\SteamLibrary\steamapps\common\RimWorld\Mods\CookCarefully\Assemblies_Temp\CookCarefully.dll
+D:\SteamLibrary\steamapps\common\RimWorld\Mods\CookCarefully\Assemblies_Temp\CookCarefully.pdb
+D:\SteamLibrary\steamapps\common\RimWorld\Mods\CookCarefully\Source\obj\Debug\Source.csproj.AssemblyReference.cache
+D:\SteamLibrary\steamapps\common\RimWorld\Mods\CookCarefully\Source\obj\Debug\Source.csproj.CoreCompileInputs.cache
+D:\SteamLibrary\steamapps\common\RimWorld\Mods\CookCarefully\Source\obj\Debug\Source.csproj.CopyComplete
+D:\SteamLibrary\steamapps\common\RimWorld\Mods\CookCarefully\Source\obj\Debug\CookCarefully.dll
+D:\SteamLibrary\steamapps\common\RimWorld\Mods\CookCarefully\Source\obj\Debug\CookCarefully.pdb

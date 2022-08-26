@@ -23,9 +23,9 @@ namespace CookCarefully
         static CookCarefully()
         {
             Harmony harmony = new Harmony(DOMAIN_NAME);
-            /// harmony.PatchAll();
+            // harmony.PatchAll();
 
-            Harmony.DEBUG = true;
+            // Harmony.DEBUG = true;
 
             harmony.PatchGeneratedMethod(typeof(Toils_Recipe),
                 m => m.Name.Contains("FinishRecipeAndStartStoringProduct"),
