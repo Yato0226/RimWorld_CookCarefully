@@ -11,4 +11,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
     <StartAction>Project</StartAction>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'v13|AnyCPU'">
+    <StartProgram>D:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64.exe</StartProgram>
+    <StartArguments>-quicktest</StartArguments>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'v14|AnyCPU'">
+    <StartProgram>D:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64.exe</StartProgram>
+    <StartArguments>-quicktest</StartArguments>
+  </PropertyGroup>
 </Project>

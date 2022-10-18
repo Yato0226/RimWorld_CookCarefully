@@ -23,9 +23,6 @@ namespace CookCarefully
         static CookCarefully()
         {
             Harmony harmony = new Harmony(DOMAIN_NAME);
-            // harmony.PatchAll();
-
-            // Harmony.DEBUG = true;
 
             harmony.PatchGeneratedMethod(typeof(Toils_Recipe),
                 m => m.Name.Contains("FinishRecipeAndStartStoringProduct"),
@@ -35,39 +32,43 @@ namespace CookCarefully
 
         static MethodInfo BillDoneInfo = AccessTools.Method(typeof(RecordsUtility), nameof(RecordsUtility.Notify_BillDone));
 
+        // 1.4 shuffled some variables around
+#if v13
+        static int IngredientsIndex = 5;
+#elif v14
+        static int IngredientsIndex = 6;
+#endif
+
         // Patch compiler generated method for 'initAction =' delegate
         public static IEnumerable<CodeInstruction> Toils_Recipe_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator il)
         {
-            // too early
-            // MethodInfo MakeRecipeProductsInfo = AccessTools.Method(typeof(GenRecipe), nameof(GenRecipe.MakeRecipeProducts));
-
             Label skipReturn = il.DefineLabel();
-            
-
             foreach (CodeInstruction i in instructions)
             {
                 yield return i;
-
                 if (i.Calls(BillDoneInfo))
                 {
                     yield return new CodeInstruction(OpCodes.Ldloc_0); // Pawn actor = toil.actor;
                     yield return new CodeInstruction(OpCodes.Ldloc_1); // Job curJob = actor.jobs.curJob;
-                    yield return new CodeInstruction(OpCodes.Ldloc_S, 5); // List<Thing> list = GenRecipe.MakeRecipeProducts(curJob.RecipeDef, actor, ingredients, dominantIngredient, jobDriver_DoBill.BillGiver, curJob.bill.precept).ToList();
+
+                    // 1.3: List<Thing> list = GenRecipe.MakeRecipeProducts(curJob.RecipeDef, actor, ingredients, dominantIngredient, jobDriver_DoBill.BillGiver, curJob.bill.precept).ToList();
+                    // 1.4: List<Thing> list = ((curJob.bill is Bill_Mech bill) ? GenRecipe.FinalizeGestatedPawns(bill, actor, style).ToList()
+                    // : GenRecipe.MakeRecipeProducts(curJob.RecipeDef, actor, ingredients, dominantIngredient, jobDriver_DoBill.BillGiver, curJob.bill.precept, style, curJob.bill.graphicIndexOverride).ToList());
+                    // yes it is that long
+                    yield return new CodeInstruction(OpCodes.Ldloc_S, IngredientsIndex);
+
+                    // Call our function
                     yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(CookCarefully), nameof(RemoveIfPoisoned)));
 
-                    // Want to return if top of stack is true
+                    // This block returns when the return value of RemoveIsPoisoned is true
                     yield return new CodeInstruction(OpCodes.Brfalse, skipReturn);
-
-                    // If did not skip (balue was true), return early
-                    yield return new CodeInstruction(OpCodes.Ret);
-
+                    yield return new CodeInstruction(OpCodes.Ret); // If did not skip (value was true), return early
                     var skipTarget = new CodeInstruction(OpCodes.Nop);
                     skipTarget.labels.Add(skipReturn);
-                    yield return skipTarget;
+                    yield return skipTarget; // skip to here if false
                 }
             }
         }
-
         public static bool RemoveIfPoisoned(Pawn actor, Job job, IEnumerable<Thing> things)
         {
             if (job.RecipeDef.ToString() != "CookMealCarefully")
