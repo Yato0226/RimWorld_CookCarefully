@@ -71,16 +71,15 @@ namespace CookCarefully
         }
         public static bool RemoveIfPoisoned(Pawn actor, Job job, IEnumerable<Thing> things)
         {
-            if (job.RecipeDef.ToString() != "CookMealCarefully")
+            if (job?.RecipeDef == null || things == null || job.RecipeDef.ToString() != "CookMealCarefully")
                 return false;
 
-            foreach (Thing thing in things)
+            foreach (Thing thing in things.Where(t => t != null))
             {
-                CompFoodPoisonable compFoodPoisonable = thing.TryGetComp<CompFoodPoisonable>();
+                var compFoodPoisonable = thing.TryGetComp<CompFoodPoisonable>();
                 if (compFoodPoisonable != null && compFoodPoisonable.PoisonPercent > 0)
                 {
-                    var lookTarget = new LookTargets(actor);
-                    Messages.Message(actor.Name + " discarded a meal because it was poisoned.", lookTarget, MessageTypeDefOf.SilentInput);
+                    Messages.Message($"{actor.Name} discarded a meal because it was poisoned.", new LookTargets(actor), MessageTypeDefOf.SilentInput);
                     thing.Destroy();
                     actor.jobs.EndCurrentJob(JobCondition.Succeeded);
                     return true;
