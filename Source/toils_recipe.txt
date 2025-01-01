@@ -1,0 +1,327 @@
+// Decompiled with JetBrains decompiler
+// Type: Verse.AI.Toils_Recipe
+// Assembly: Assembly-CSharp, Version=1.5.9102.32373, Culture=neutral, PublicKeyToken=null
+// MVID: 69945A8E-D6C5-40CF-90B5-78DE735E0605
+// Assembly location: G:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll
+
+using RimWorld;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+#nullable disable
+namespace Verse.AI
+{
+  public static class Toils_Recipe
+  {
+    private const int LongCraftingProjectThreshold = 10000;
+
+    public static Toil MakeUnfinishedThingIfNeeded()
+    {
+      Toil toil = ToilMaker.MakeToil(nameof (MakeUnfinishedThingIfNeeded));
+      toil.initAction = (Action) (() =>
+      {
+        Pawn actor = toil.actor;
+        Job curJob = actor.jobs.curJob;
+        if (!curJob.RecipeDef.UsesUnfinishedThing || curJob.GetTarget(TargetIndex.B).Thing is UnfinishedThing)
+          return;
+        List<Thing> ingredients = Toils_Recipe.CalculateIngredients(curJob, actor);
+        Thing dominantIngredient = Toils_Recipe.CalculateDominantIngredient(curJob, ingredients);
+        for (int index = 0; index < ingredients.Count; ++index)
+        {
+          Thing t = ingredients[index];
+          actor.Map.designationManager.RemoveAllDesignationsOn(t);
+          t.DeSpawnOrDeselect();
+        }
+        ThingDef def = curJob.RecipeDef.unfinishedThingDef.MadeFromStuff ? dominantIngredient.def : (ThingDef) null;
+        UnfinishedThing unfinishedThing = (UnfinishedThing) ThingMaker.MakeThing(curJob.RecipeDef.unfinishedThingDef, def);
+        unfinishedThing.Creator = actor;
+        unfinishedThing.BoundBill = (Bill_ProductionWithUft) curJob.bill;
+        unfinishedThing.ingredients = ingredients;
+        unfinishedThing.workLeft = curJob.bill.GetWorkAmount((Thing) unfinishedThing);
+        unfinishedThing.TryGetComp<CompColorable>()?.SetColor(dominantIngredient.DrawColor);
+        GenSpawn.Spawn((Thing) unfinishedThing, curJob.GetTarget(TargetIndex.A).Cell, actor.Map);
+        curJob.SetTarget(TargetIndex.B, (LocalTargetInfo) (Thing) unfinishedThing);
+        actor.Reserve((LocalTargetInfo) (Thing) unfinishedThing, curJob);
+      });
+      return toil;
+    }
+
+    public static Toil DoRecipeWork()
+    {
+      Toil toil = ToilMaker.MakeToil(nameof (DoRecipeWork));
+      toil.initAction = (Action) (() =>
+      {
+        Pawn actor = toil.actor;
+        Job curJob = actor.jobs.curJob;
+        JobDriver_DoBill curDriver = (JobDriver_DoBill) actor.jobs.curDriver;
+        Thing thing = curJob.GetTarget(TargetIndex.B).Thing;
+        UnfinishedThing unfinishedThing = thing as UnfinishedThing;
+        BuildingProperties building = curJob.GetTarget(TargetIndex.A).Thing.def.building;
+        if (unfinishedThing != null && unfinishedThing.Initialized)
+        {
+          curDriver.workLeft = unfinishedThing.workLeft;
+        }
+        else
+        {
+          curDriver.workLeft = curJob.bill.GetWorkAmount(thing);
+          if (unfinishedThing != null)
+            unfinishedThing.workLeft = !unfinishedThing.debugCompleted ? curDriver.workLeft : (curDriver.workLeft = 0.0f);
+        }
+        curDriver.billStartTick = Find.TickManager.TicksGame;
+        curDriver.ticksSpentDoingRecipeWork = 0;
+        curJob.bill.Notify_BillWorkStarted(actor);
+      });
+      toil.tickAction = (Action) (() =>
+      {
+        Pawn actor = toil.actor;
+        Job curJob = actor.jobs.curJob;
+        JobDriver_DoBill curDriver = (JobDriver_DoBill) actor.jobs.curDriver;
+        if (curJob.GetTarget(TargetIndex.B).Thing is UnfinishedThing thing4 && thing4.Destroyed)
+        {
+          actor.jobs.EndCurrentJob(JobCondition.Incompletable);
+        }
+        else
+        {
+          ++curDriver.ticksSpentDoingRecipeWork;
+          curJob.bill.Notify_PawnDidWork(actor);
+          if (toil.actor.CurJob.GetTarget(TargetIndex.A).Thing is IBillGiverWithTickAction thing3)
+            thing3.UsedThisTick();
+          if (curJob.RecipeDef.workSkill != null && curJob.RecipeDef.UsesUnfinishedThing && actor.skills != null)
+            actor.skills.Learn(curJob.RecipeDef.workSkill, 0.1f * curJob.RecipeDef.workSkillLearnFactor);
+          float num1 = curJob.RecipeDef.workSpeedStat == null ? 1f : actor.GetStatValue(curJob.RecipeDef.workSpeedStat);
+          if (curJob.RecipeDef.workTableSpeedStat != null && curDriver.BillGiver is Building_WorkTable billGiver2)
+            num1 *= billGiver2.GetStatValue(curJob.RecipeDef.workTableSpeedStat);
+          if (DebugSettings.fastCrafting)
+            num1 *= 30f;
+          curDriver.workLeft -= num1;
+          if (thing4 != null)
+            thing4.workLeft = !thing4.debugCompleted ? curDriver.workLeft : (curDriver.workLeft = 0.0f);
+          actor.GainComfortFromCellIfPossible(true);
+          if ((double) curDriver.workLeft <= 0.0)
+          {
+            curJob.bill.Notify_BillWorkFinished(actor);
+            curDriver.ReadyForNextToil();
+          }
+          else
+          {
+            if (!curJob.bill.recipe.UsesUnfinishedThing)
+              return;
+            int num2 = Find.TickManager.TicksGame - curDriver.billStartTick;
+            if (num2 < 3000 || num2 % 1000 != 0)
+              return;
+            actor.jobs.CheckForJobOverride();
+          }
+        }
+      });
+      toil.defaultCompleteMode = ToilCompleteMode.Never;
+      toil.WithEffect((Func<EffecterDef>) (() => toil.actor.CurJob.bill.recipe.effectWorking), TargetIndex.A);
+      toil.PlaySustainerOrSound((Func<SoundDef>) (() => toil.actor.CurJob.bill.recipe.soundWorking));
+      toil.WithProgressBar(TargetIndex.A, (Func<float>) (() =>
+      {
+        Pawn actor = toil.actor;
+        Job curJob = actor.CurJob;
+        Thing thing5 = curJob.GetTarget(TargetIndex.B).Thing;
+        return (float) (1.0 - (double) ((JobDriver_DoBill) actor.jobs.curDriver).workLeft / (!(curJob.bill is Bill_Mech bill2) || bill2.State != FormingState.Formed ? (double) curJob.bill.recipe.WorkAmountTotal(thing5) : 300.0));
+      }));
+      toil.FailOn<Toil>((Func<bool>) (() =>
+      {
+        RecipeDef recipeDef = toil.actor.CurJob.RecipeDef;
+        if (recipeDef != null && recipeDef.interruptIfIngredientIsRotting)
+        {
+          LocalTargetInfo target = toil.actor.CurJob.GetTarget(TargetIndex.B);
+          if (target.HasThing && target.Thing.GetRotStage() > RotStage.Fresh)
+            return true;
+        }
+        return toil.actor.CurJob.bill.suspended;
+      }));
+      toil.activeSkill = (Func<SkillDef>) (() => toil.actor.CurJob.bill.recipe.workSkill);
+      return toil;
+    }
+
+    public static Toil FinishRecipeAndStartStoringProduct(TargetIndex productIndex = TargetIndex.A)
+    {
+      Toil toil = ToilMaker.MakeToil(nameof (FinishRecipeAndStartStoringProduct));
+      toil.AddFinishAction((Action) (() =>
+      {
+        if (!(toil.actor.jobs.curJob.bill is Bill_Production bill2) || bill2.repeatMode != BillRepeatModeDefOf.TargetCount)
+          return;
+        toil.actor.Map.resourceCounter.UpdateResourceCounts();
+      }));
+      toil.initAction = (Action) (() =>
+      {
+        Pawn actor = toil.actor;
+        Job curJob = actor.jobs.curJob;
+        JobDriver_DoBill curDriver = (JobDriver_DoBill) actor.jobs.curDriver;
+        if (curJob.RecipeDef.workSkill != null && !curJob.RecipeDef.UsesUnfinishedThing && actor.skills != null)
+        {
+          float xp = (float) curDriver.ticksSpentDoingRecipeWork * 0.1f * curJob.RecipeDef.workSkillLearnFactor;
+          actor.skills.GetSkill(curJob.RecipeDef.workSkill).Learn(xp);
+        }
+        List<Thing> ingredients = Toils_Recipe.CalculateIngredients(curJob, actor);
+        Thing dominantIngredient = Toils_Recipe.CalculateDominantIngredient(curJob, ingredients);
+        ThingStyleDef style1 = (ThingStyleDef) null;
+        if (ModsConfig.IdeologyActive && curJob.bill.recipe.products != null && curJob.bill.recipe.products.Count == 1)
+          style1 = curJob.bill.globalStyle ? Faction.OfPlayer.ideos.PrimaryIdeo.style.StyleForThingDef(curJob.bill.recipe.ProducedThingDef)?.styleDef : curJob.bill.style;
+        List<Thing> list;
+        if (!(curJob.bill is Bill_Mech bill4))
+        {
+          list = GenRecipe.MakeRecipeProducts(curJob.RecipeDef, actor, ingredients, dominantIngredient, curDriver.BillGiver, curJob.bill.precept, style1, curJob.bill.graphicIndexOverride).ToList<Thing>();
+        }
+        else
+        {
+          Pawn worker = actor;
+          ThingStyleDef style2 = style1;
+          int? overrideGraphicIndex = new int?();
+          list = GenRecipe.FinalizeGestatedPawns(bill4, worker, style2, overrideGraphicIndex).ToList<Thing>();
+        }
+        List<Thing> thingList = list;
+        Toils_Recipe.ConsumeIngredients(ingredients, curJob.RecipeDef, actor.Map);
+        curJob.bill.Notify_IterationCompleted(actor, ingredients);
+        RecordsUtility.Notify_BillDone(actor, thingList);
+        if (curJob?.bill == null)
+        {
+          for (int index = 0; index < thingList.Count; ++index)
+          {
+            if (!GenPlace.TryPlaceThing(thingList[index], actor.Position, actor.Map, ThingPlaceMode.Near))
+              Log.Error(actor.ToString() + " could not drop recipe product " + (object) thingList[index] + " near " + (object) actor.Position);
+          }
+        }
+        else
+        {
+          Thing thing1 = curJob.GetTarget(TargetIndex.B).Thing;
+          if ((double) curJob.bill.recipe.WorkAmountTotal(thing1) >= 10000.0 && thingList.Count > 0)
+            TaleRecorder.RecordTale(TaleDefOf.CompletedLongCraftingProject, (object) actor, (object) thingList[0].GetInnerIfMinified().def);
+          if (thingList.Any<Thing>())
+            Find.QuestManager.Notify_ThingsProduced(actor, thingList);
+          if (thingList.Count == 0)
+            actor.jobs.EndCurrentJob(JobCondition.Succeeded);
+          else if (curJob.bill.GetStoreMode() == BillStoreModeDefOf.DropOnFloor)
+          {
+            for (int index = 0; index < thingList.Count; ++index)
+            {
+              if (!GenPlace.TryPlaceThing(thingList[index], actor.Position, actor.Map, ThingPlaceMode.Near))
+                Log.Error(string.Format("{0} could not drop recipe product {1} near {2}", (object) actor, (object) thingList[index], (object) actor.Position));
+            }
+            actor.jobs.EndCurrentJob(JobCondition.Succeeded);
+          }
+          else
+          {
+            if (thingList.Count > 1)
+            {
+              for (int index = 1; index < thingList.Count; ++index)
+              {
+                if (!GenPlace.TryPlaceThing(thingList[index], actor.Position, actor.Map, ThingPlaceMode.Near))
+                  Log.Error(string.Format("{0} could not drop recipe product {1} near {2}", (object) actor, (object) thingList[index], (object) actor.Position));
+              }
+            }
+            IntVec3 foundCell = IntVec3.Invalid;
+            if (curJob.bill.GetStoreMode() == BillStoreModeDefOf.BestStockpile)
+              StoreUtility.TryFindBestBetterStoreCellFor(thingList[0], actor, actor.Map, StoragePriority.Unstored, actor.Faction, out foundCell);
+            else if (curJob.bill.GetStoreMode() == BillStoreModeDefOf.SpecificStockpile)
+              StoreUtility.TryFindBestBetterStoreCellForIn(thingList[0], actor, actor.Map, StoragePriority.Unstored, actor.Faction, curJob.bill.GetSlotGroup(), out foundCell);
+            else
+              Log.ErrorOnce("Unknown store mode", 9158246);
+            if (foundCell.IsValid)
+            {
+              int num = actor.carryTracker.MaxStackSpaceEver(thingList[0].def);
+              if (num < thingList[0].stackCount)
+              {
+                int count = thingList[0].stackCount - num;
+                Thing thing2 = thingList[0].SplitOff(count);
+                if (!GenPlace.TryPlaceThing(thing2, actor.Position, actor.Map, ThingPlaceMode.Near))
+                  Log.Error(string.Format("{0} could not drop recipe extra product that pawn couldn't carry, {1} near {2}", (object) actor, (object) thing2, (object) actor.Position));
+              }
+              if (num == 0)
+              {
+                actor.jobs.EndCurrentJob(JobCondition.Succeeded);
+              }
+              else
+              {
+                actor.carryTracker.TryStartCarry(thingList[0]);
+                actor.jobs.StartJob(HaulAIUtility.HaulToCellStorageJob(actor, thingList[0], foundCell, false), JobCondition.Succeeded, keepCarryingThingOverride: new bool?(true));
+              }
+            }
+            else
+            {
+              if (!GenPlace.TryPlaceThing(thingList[0], actor.Position, actor.Map, ThingPlaceMode.Near))
+                Log.Error(string.Format("Bill doer could not drop product {0} near {1}", (object) thingList[0], (object) actor.Position));
+              actor.jobs.EndCurrentJob(JobCondition.Succeeded);
+            }
+          }
+        }
+      });
+      return toil;
+    }
+
+    private static List<Thing> CalculateIngredients(Job job, Pawn actor)
+    {
+      if (job.GetTarget(TargetIndex.B).Thing is UnfinishedThing thing1)
+      {
+        List<Thing> ingredients = thing1.ingredients;
+        job.RecipeDef.Worker.ConsumeIngredient((Thing) thing1, job.RecipeDef, actor.Map);
+        job.placedThings = (List<ThingCountClass>) null;
+        return ingredients;
+      }
+      List<Thing> ingredients1 = new List<Thing>();
+      if (job.placedThings != null)
+      {
+        for (int index = 0; index < job.placedThings.Count; ++index)
+        {
+          if (job.placedThings[index].Count <= 0)
+          {
+            Log.Error("PlacedThing " + (object) job.placedThings[index] + " with count " + (object) job.placedThings[index].Count + " for job " + (object) job);
+          }
+          else
+          {
+            Thing thing2 = job.placedThings[index].Count >= job.placedThings[index].thing.stackCount ? job.placedThings[index].thing : job.placedThings[index].thing.SplitOff(job.placedThings[index].Count);
+            job.placedThings[index].Count = 0;
+            if (ingredients1.Contains(thing2))
+            {
+              Log.Error("Tried to add ingredient from job placed targets twice: " + (object) thing2);
+            }
+            else
+            {
+              ingredients1.Add(thing2);
+              if (job.RecipeDef.autoStripCorpses && thing2 is IStrippable strippable && strippable.AnythingToStrip())
+                strippable.Strip();
+            }
+          }
+        }
+      }
+      job.placedThings = (List<ThingCountClass>) null;
+      return ingredients1;
+    }
+
+    private static Thing CalculateDominantIngredient(Job job, List<Thing> ingredients)
+    {
+      UnfinishedThing uft = job.GetTarget(TargetIndex.B).Thing as UnfinishedThing;
+      if (uft != null && uft.def.MadeFromStuff)
+        return uft.ingredients.First<Thing>((Func<Thing, bool>) (ing => ing.def == uft.Stuff));
+      if (ingredients.NullOrEmpty<Thing>())
+        return (Thing) null;
+      RecipeDef recipeDef = job.RecipeDef;
+      if (recipeDef.productHasIngredientStuff)
+        return ingredients[0];
+      return recipeDef.products.Any<ThingDefCountClass>((Predicate<ThingDefCountClass>) (x => x.thingDef.MadeFromStuff)) || recipeDef.unfinishedThingDef != null && recipeDef.unfinishedThingDef.MadeFromStuff ? ingredients.Where<Thing>((Func<Thing, bool>) (x => x.def.IsStuff)).RandomElementByWeight<Thing>((Func<Thing, float>) (x => (float) x.stackCount)) : ingredients.RandomElementByWeight<Thing>((Func<Thing, float>) (x => (float) x.stackCount));
+    }
+
+    private static void ConsumeIngredients(List<Thing> ingredients, RecipeDef recipe, Map map)
+    {
+      for (int index = 0; index < ingredients.Count; ++index)
+        recipe.Worker.ConsumeIngredient(ingredients[index], recipe, map);
+    }
+
+    public static Toil CheckIfRecipeCanFinishNow()
+    {
+      Toil toil = ToilMaker.MakeToil(nameof (CheckIfRecipeCanFinishNow));
+      toil.initAction = (Action) (() =>
+      {
+        if (toil.actor.jobs.curJob.bill.CanFinishNow)
+          return;
+        toil.actor.jobs.EndCurrentJob(JobCondition.Succeeded);
+      });
+      return toil;
+    }
+  }
+}

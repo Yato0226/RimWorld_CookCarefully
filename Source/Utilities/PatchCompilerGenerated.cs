@@ -1,32 +1,36 @@
-﻿using System;
+﻿// Decompiled with JetBrains decompiler
+// Type: CookCarefully.Utilities.PatchCompilerGenerated
+// Assembly: CookCarefully, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+// MVID: 7E760DD7-02E5-4645-8CBA-2B279FC6D83A
+// Assembly location: C:\Users\louiz\Downloads\CookCarefully.dll
+
+using HarmonyLib;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
-
-using HarmonyLib;
 using Verse;
 
 namespace CookCarefully.Utilities
 {
-	// From https://github.com/alextd/RimWorld-EnhancementPack/blob/master/Source/Utilities/PatchCompilerGenerated.cs
-	static class PatchCompilerGenerated
+    internal static class PatchCompilerGenerated
     {
-		public static void PatchGeneratedMethod(this Harmony harmony, Type masterType, Func<MethodInfo, bool> check, HarmonyMethod prefix = null, HarmonyMethod postfix = null, HarmonyMethod transpiler = null)
-		{
-			// Find the compiler-created method nested in masterType that passes the check, Patch it
-			List<Type> nestedTypes = new List<Type>(masterType.GetNestedTypes(BindingFlags.NonPublic));
-			while (nestedTypes.Any())
-			{
-				Type type = nestedTypes.Pop();
-				nestedTypes.AddRange(type.GetNestedTypes(BindingFlags.NonPublic));
-
-				foreach (MethodInfo method in AccessTools.GetDeclaredMethods(type).Where(check))
-				{
-					harmony.Patch(method, prefix, postfix, transpiler);
-				}
-			}
-		}
-	}
+        public static void PatchGeneratedMethod(
+          this Harmony harmony,
+          System.Type masterType,
+          Func<MethodInfo, bool> check,
+          HarmonyMethod prefix = null,
+          HarmonyMethod postfix = null,
+          HarmonyMethod transpiler = null)
+        {
+            List<System.Type> list = new List<System.Type>((IEnumerable<System.Type>)masterType.GetNestedTypes(BindingFlags.NonPublic));
+            while (list.Any<System.Type>())
+            {
+                System.Type type = list.Pop<System.Type>();
+                list.AddRange((IEnumerable<System.Type>)type.GetNestedTypes(BindingFlags.NonPublic));
+                foreach (MethodInfo methodInfo in AccessTools.GetDeclaredMethods(type).Where<MethodInfo>(check))
+                    harmony.Patch((MethodBase)methodInfo, prefix, postfix, transpiler, (HarmonyMethod)null);
+            }
+        }
+    }
 }

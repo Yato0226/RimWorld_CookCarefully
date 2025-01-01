@@ -1,85 +1,68 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-using HarmonyLib;
-using RimWorld;
-using Verse;
-using Verse.AI;
+﻿// Decompiled with JetBrains decompiler
+// Type: CookCarefully.CookCarefully
+// Assembly: CookCarefully, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+// MVID: 7E760DD7-02E5-4645-8CBA-2B279FC6D83A
+// Assembly location: C:\Users\louiz\Downloads\CookCarefully.dll
 
 using CookCarefully.Utilities;
+using HarmonyLib;
+using RimWorld;
+using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Reflection.Emit;
+using Verse;
+using Verse.AI;
 
 namespace CookCarefully
 {
     [StaticConstructorOnStartup]
-    static class CookCarefully
+    internal static class CookCarefully
     {
         public static string DOMAIN_NAME = "com.theonly8z.cookcarefully";
-        
+        private static MethodInfo BillDoneInfo = AccessTools.Method(typeof(RecordsUtility), "Notify_BillDone", (System.Type[])null, (System.Type[])null);
+        private static int IngredientsIndex = 6;
+
         static CookCarefully()
         {
-            Harmony harmony = new Harmony(DOMAIN_NAME);
-
-            harmony.PatchGeneratedMethod(typeof(Toils_Recipe),
-                m => m.Name.Contains("FinishRecipeAndStartStoringProduct"),
-                transpiler: new HarmonyMethod(typeof(CookCarefully), nameof(CookCarefully.Toils_Recipe_Transpiler)));
-
+            new Harmony(CookCarefully.DOMAIN_NAME).PatchGeneratedMethod(typeof(Toils_Recipe), (Func<MethodInfo, bool>)(m => m.Name.Contains("FinishRecipeAndStartStoringProduct")), transpiler: new HarmonyMethod(typeof(CookCarefully), "Toils_Recipe_Transpiler", (System.Type[])null));
         }
 
-        static MethodInfo BillDoneInfo = AccessTools.Method(typeof(RecordsUtility), nameof(RecordsUtility.Notify_BillDone));
-
-        // 1.4 shuffled some variables around
-#if v13
-        static int IngredientsIndex = 5;
-#elif v14
-        static int IngredientsIndex = 6;
-#endif
-
-        // Patch compiler generated method for 'initAction =' delegate
-        public static IEnumerable<CodeInstruction> Toils_Recipe_Transpiler(IEnumerable<CodeInstruction> instructions, ILGenerator il)
+        public static IEnumerable<CodeInstruction> Toils_Recipe_Transpiler(
+          IEnumerable<CodeInstruction> instructions,
+          ILGenerator il)
         {
             Label skipReturn = il.DefineLabel();
             foreach (CodeInstruction i in instructions)
             {
                 yield return i;
-                if (i.Calls(BillDoneInfo))
+                if (CodeInstructionExtensions.Calls(i, CookCarefully.BillDoneInfo))
                 {
-                    yield return new CodeInstruction(OpCodes.Ldloc_0); // Pawn actor = toil.actor;
-                    yield return new CodeInstruction(OpCodes.Ldloc_1); // Job curJob = actor.jobs.curJob;
-
-                    // 1.3: List<Thing> list = GenRecipe.MakeRecipeProducts(curJob.RecipeDef, actor, ingredients, dominantIngredient, jobDriver_DoBill.BillGiver, curJob.bill.precept).ToList();
-                    // 1.4: List<Thing> list = ((curJob.bill is Bill_Mech bill) ? GenRecipe.FinalizeGestatedPawns(bill, actor, style).ToList()
-                    // : GenRecipe.MakeRecipeProducts(curJob.RecipeDef, actor, ingredients, dominantIngredient, jobDriver_DoBill.BillGiver, curJob.bill.precept, style, curJob.bill.graphicIndexOverride).ToList());
-                    // yes it is that long
-                    yield return new CodeInstruction(OpCodes.Ldloc_S, IngredientsIndex);
-
-                    // Call our function
-                    yield return new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(CookCarefully), nameof(RemoveIfPoisoned)));
-
-                    // This block returns when the return value of RemoveIsPoisoned is true
-                    yield return new CodeInstruction(OpCodes.Brfalse, skipReturn);
-                    yield return new CodeInstruction(OpCodes.Ret); // If did not skip (value was true), return early
-                    var skipTarget = new CodeInstruction(OpCodes.Nop);
+                    yield return new CodeInstruction(OpCodes.Ldloc_0, (object)null);
+                    yield return new CodeInstruction(OpCodes.Ldloc_1, (object)null);
+                    yield return new CodeInstruction(OpCodes.Ldloc_S, (object)CookCarefully.IngredientsIndex);
+                    yield return new CodeInstruction(OpCodes.Call, (object)AccessTools.Method(typeof(CookCarefully), "RemoveIfPoisoned", (System.Type[])null, (System.Type[])null));
+                    yield return new CodeInstruction(OpCodes.Brfalse, (object)skipReturn);
+                    yield return new CodeInstruction(OpCodes.Ret, (object)null);
+                    CodeInstruction skipTarget = new CodeInstruction(OpCodes.Nop, (object)null);
                     skipTarget.labels.Add(skipReturn);
-                    yield return skipTarget; // skip to here if false
+                    yield return skipTarget;
+                    skipTarget = (CodeInstruction)null;
                 }
             }
         }
+
         public static bool RemoveIfPoisoned(Pawn actor, Job job, IEnumerable<Thing> things)
         {
-            if (job?.RecipeDef == null || things == null || job.RecipeDef.ToString() != "CookMealCarefully")
+            if (job.RecipeDef.ToString() != "CookMealCarefully")
                 return false;
-
-            foreach (Thing thing in things.Where(t => t != null))
+            foreach (Thing thing in things)
             {
-                var compFoodPoisonable = thing.TryGetComp<CompFoodPoisonable>();
-                if (compFoodPoisonable != null && compFoodPoisonable.PoisonPercent > 0)
+                CompFoodPoisonable comp = thing.TryGetComp<CompFoodPoisonable>();
+                if (comp != null && (double)comp.PoisonPercent > 0.0)
                 {
-                    Messages.Message($"{actor.Name} discarded a meal because it was poisoned.", new LookTargets(actor), MessageTypeDefOf.SilentInput);
+                    LookTargets lookTargets = new LookTargets((Thing)actor);
+                    Messages.Message(actor.Name?.ToString() + " discarded a meal because it was poisoned.", lookTargets, MessageTypeDefOf.SilentInput);
                     thing.Destroy();
                     actor.jobs.EndCurrentJob(JobCondition.Succeeded);
                     return true;
@@ -87,7 +70,5 @@ namespace CookCarefully
             }
             return false;
         }
-
     }
-
 }

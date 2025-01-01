@@ -1,0 +1,75 @@
+// Decompiled with JetBrains decompiler
+// Type: RimWorld.CompFoodPoisonable
+// Assembly: Assembly-CSharp, Version=1.5.9102.32373, Culture=neutral, PublicKeyToken=null
+// MVID: 69945A8E-D6C5-40CF-90B5-78DE735E0605
+// Assembly location: G:\SteamLibrary\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll
+
+using Verse;
+
+#nullable disable
+namespace RimWorld
+{
+  public class CompFoodPoisonable : ThingComp
+  {
+    private float poisonPct;
+    private FoodPoisonCause cause;
+
+    public float PoisonPercent => this.poisonPct;
+
+    public FoodPoisonCause Cause => this.cause;
+
+    public void SetPoisoned(FoodPoisonCause newCause)
+    {
+      this.poisonPct = 1f;
+      this.cause = newCause;
+    }
+
+    public override void PostExposeData()
+    {
+      base.PostExposeData();
+      Scribe_Values.Look<float>(ref this.poisonPct, "poisonPct");
+      Scribe_Values.Look<FoodPoisonCause>(ref this.cause, "cause");
+    }
+
+    public override void PostSplitOff(Thing piece)
+    {
+      base.PostSplitOff(piece);
+      CompFoodPoisonable comp = piece.TryGetComp<CompFoodPoisonable>();
+      comp.poisonPct = this.poisonPct;
+      comp.cause = this.cause;
+    }
+
+    public override void Notify_RecipeProduced(Pawn pawn)
+    {
+      Room room = pawn.GetRoom();
+      if (Rand.Chance(room != null ? room.GetStat(RoomStatDefOf.FoodPoisonChance) : RoomStatDefOf.FoodPoisonChance.roomlessScore))
+      {
+        this.SetPoisoned(FoodPoisonCause.FilthyKitchen);
+      }
+      else
+      {
+        if (!Rand.Chance(pawn.GetStatValue(StatDefOf.FoodPoisonChance)))
+          return;
+        this.SetPoisoned(FoodPoisonCause.IncompetentCook);
+      }
+    }
+
+    public override void PreAbsorbStack(Thing otherStack, int count)
+    {
+      base.PreAbsorbStack(otherStack, count);
+      CompFoodPoisonable comp = otherStack.TryGetComp<CompFoodPoisonable>();
+      if (this.cause == FoodPoisonCause.Unknown && comp.cause != FoodPoisonCause.Unknown)
+        this.cause = comp.cause;
+      else if (comp.cause != FoodPoisonCause.Unknown && this.cause != FoodPoisonCause.Unknown)
+        this.cause = (double) (this.poisonPct * (float) this.parent.stackCount) > (double) (comp.poisonPct * (float) count) ? this.cause : comp.cause;
+      this.poisonPct = GenMath.WeightedAverage(this.poisonPct, (float) this.parent.stackCount, comp.poisonPct, (float) count);
+    }
+
+    public override void PostIngested(Pawn ingester)
+    {
+      if (!Rand.Chance(this.poisonPct * FoodUtility.GetFoodPoisonChanceFactor(ingester)))
+        return;
+      FoodUtility.AddFoodPoisoningHediff(ingester, (Thing) this.parent, this.cause);
+    }
+  }
+}
